@@ -8,3 +8,193 @@ output: html_document
 # Synopsis
 
 It is paramount to the public health and economy to optimise the use of resources in order to prevent and/or mitigate the effects of severe weather events. In order to help prioritise resource use, this report examines the [US National Weather Service Storm Database](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf) to determine the types of events most harmful to population health and the ones that have the greatest economic consequences. Our data analysis indicates that X events are most harmful to population health and Y events have the greatest economic consequences.
+
+# Data Processing
+
+## Computing Environment
+```{r sessionInfo}
+sessionInfo()
+```
+
+## Utility Functions
+```{r utility}
+# Load libraries
+library("dplyr")     # Used for data handling
+library("gdata")     # Used for data handling
+library("ggplot2")   # Used for plotting
+library("lubridate")   # Used for date handling
+library("stringr")   # String manipulation 
+
+
+timeprint <- function(s){
+  # Prints out the given string with a datestamp
+  #
+  # args:
+  #  s: The string to print
+  s <- paste(format(Sys.time(), "%a %b %d %H:%M:%S %Y"),s,sep="> ")
+  print(s)
+}
+```
+## Data Source
+The data for this report come from the U.S. National Oceanic and Atmospheric Administration's (NOAA). This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. Please see [the data documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf) for data integrity and providence information.
+## Fetching and Loading Data
+```{r getData, cache=TRUE}
+if(!file.exists("data")){dir.create("data")}
+
+## Download data
+fileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+if(!file.exists("./data/FStormData.csv.bz2")){
+    timeprint("Downloading data...")
+    download.file(fileURL, destfile = './data/FStormData.csv.bz2', method="curl")
+    outputMsg <- paste("Raw data downloaded from:", fileURL," ", date())    
+    write(outputMsg, file = paste("./data/", "FStormData.csv.bz2", ".download.info.md", sep=""))
+} else{
+  con <- file("./data/FStormData.csv.bz2.download.info.md", "rt")  
+  outputMsg <- readLines(con, 1)
+}
+timeprint(outputMsg)
+stormData <- read.csv2("./data/FStormData.csv.bz2", sep=",", header=TRUE)
+timeprint("Data loaded successfully.")
+
+# Ensure that Variables are lowercase to ease data handling
+names(stormData) <- tolower(names(stormData))
+
+# Initial examination of the data
+str(stormData)
+```
+
+## Data Exploration and Selection
+```{r exploreData, cache=TRUE}
+dim(stormData)
+names(stormData)
+stormData <- tbl_df(stormData)
+stormData
+```
+```{r exploreData2, cache=TRUE}
+head(stormData)
+tail(stormData)
+seed <- 314
+set.seed(seed)
+stormData[sample(nrow(stormData), 6),]
+summary(stormData)
+# Ensure correct the variable formats
+sapply(stormData, class)    ## Get the data type of each variable
+```
+```{r exploreData3_ignoreRows, cache=TRUE}
+# The assignment instructions warn: "More recent years should be considered more complete." Therefore we should exclide non-recent year rows.
+## First we convert the date factor Variable into a date for easy processing 
+stormData$bgn_date <- as.Date(stormData$bgn_date, format="%m/%d/%Y %H:%M:%S")
+head(stormData$bgn_date)   # confirm date change
+## Check weather events by year to visually inspect if there is a rise events which may correspond to when the dataset is more complete.
+stormsPerYear <- stormData %>%
+  mutate("year" = year(bgn_date)) %>%  group_by(year) %>% summarise(count = n())
+ggplot(stormsPerYear, aes(year, count)) + geom_line() + ylab("Num events in dataset") + ggtitle("Num weather events per year")
+
+# Results suggest a sharp rise after 1994, therefore exclude data from it and before
+excludeBefore <- 1994
+stormData <- stormData %>% filter(year(bgn_date) > 1994, fatalities > 0 | injuries > 0 | propdmg > 0 | cropdmg > 0)
+dim(stormData)
+```
+
+```{r exploreData4_ignoreCols, cache=TRUE}
+# Only include relevant Variables
+stormData <- select(stormData, evtype, fatalities:cropdmgexp)
+dim(stormData)
+```
+
+```{r exploreData5_evType, cache=TRUE}
+# Examine the weather event types to ensure there are no anomalies
+# unique(stormData$evtype)  # comment this in to do visual inspection
+# Visual inspection shows many similar terms (such as HEAVY RAINS and HEAVY RAIN) and irrelevant values (such as Summary of March 14). Such data should be corrected:
+
+# Exclude summaries
+stormData <- subset(stormData, !grepl('summary', evtype, ignore.case = TRUE) )
+
+# Group common terms
+stormData$evtype <- str_trim(stormData$evtype)
+stormData$evtype[grep("THUN", stormData$evtype, ignore.case = TRUE)] <- "THUNDERSTORM"
+stormData$evtype[grep("CLOUD", stormData$evtype, ignore.case = TRUE)] <- "CLOUD"
+stormData$evtype[grep("RAIN", stormData$evtype, ignore.case = TRUE)] <- "RAIN"
+stormData$evtype[grep("HURRICANE", stormData$evtype, ignore.case = TRUE)] <- "HURRICANE"
+stormData$evtype[grep("SNOW", stormData$evtype, ignore.case = TRUE)] <- "SNOW"
+stormData$evtype[grep("HAIL", stormData$evtype, ignore.case = TRUE)] <- "HAIL"
+stormData$evtype[grep("COLD", stormData$evtype, ignore.case = TRUE)] <- "COLD"
+stormData$evtype[grep("CURRENT", stormData$evtype, ignore.case = TRUE)] <- "RIP CURRENT"
+stormData$evtype[grep("TORNADO", stormData$evtype, ignore.case = TRUE)] <- "TORNADO"
+stormData$evtype[grep("FLOOD", stormData$evtype, ignore.case = TRUE)] <- "FLOOD"
+stormData$evtype[grep("WIND", stormData$evtype, ignore.case = TRUE)] <- "WIND"
+stormData$evtype[grep("BLIZZARD", stormData$evtype, ignore.case = TRUE)] <- "BLIZZARD"
+stormData$evtype[grep("WATERSPOUT", stormData$evtype, ignore.case = TRUE)] <- "WATERSPOUT"
+stormData$evtype[grep("FOG", stormData$evtype, ignore.case = TRUE)] <- "FOG"
+stormData$evtype[grep("HIGH TEMPERATURE", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("LOW TEMPERATURE", stormData$evtype, ignore.case = TRUE)] <- "COLD"
+stormData$evtype[grep("MARINE", stormData$evtype, ignore.case = TRUE)] <- "MARINE MISHAP"
+stormData$evtype[grep("HEAT", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("FIRE", stormData$evtype, ignore.case = TRUE)] <- "FIRE"
+stormData$evtype[grep("STORM", stormData$evtype, ignore.case = TRUE)] <- "STORM"
+stormData$evtype[grep("SLEET", stormData$evtype, ignore.case = TRUE)] <- "SLEET"
+stormData$evtype[grep("ICE", stormData$evtype, ignore.case = TRUE)] <- "ICE"
+stormData$evtype[grep("MICROBURST", stormData$evtype, ignore.case = TRUE)] <- "MICROBURST"
+stormData$evtype[grep("FREEZ", stormData$evtype, ignore.case = TRUE)] <- "COLD"
+stormData$evtype[grep("WARMTH", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("DRY", stormData$evtype, ignore.case = TRUE)] <- "DRY"
+stormData$evtype[grep("RECORD HIGH", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("RECORD LOW", stormData$evtype, ignore.case = TRUE)] <- "COLD"
+stormData$evtype[grep("GUSTNADO", stormData$evtype, ignore.case = TRUE)] <- "TORNADO"
+stormData$evtype[grep("WINTRY", stormData$evtype, ignore.case = TRUE)] <- "COLD"
+stormData$evtype[grep("WARM", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("LIGHTNING", stormData$evtype, ignore.case = TRUE)] <- "LIGHTNING"
+stormData$evtype[grep("ICY", stormData$evtype, ignore.case = TRUE)] <- "ICE"
+stormData$evtype[grep("DAM", stormData$evtype, ignore.case = TRUE)] <- "DAM FAILURE"
+stormData$evtype[grep("EROSION", stormData$evtype, ignore.case = TRUE)] <- "EROSION"
+stormData$evtype[grep("SLIDE", stormData$evtype, ignore.case = TRUE)] <- "MUD/ROCK SLIDE"
+stormData$evtype[grep("RISING WATER", stormData$evtype, ignore.case = TRUE)] <- "HIGH WATER"
+stormData$evtype[grep("HOT", stormData$evtype, ignore.case = TRUE)] <- "HEAT"
+stormData$evtype[grep("SHOWERS", stormData$evtype, ignore.case = TRUE)] <- "RAIN"
+stormData$evtype[grep("OTHER", stormData$evtype, ignore.case = TRUE)] <- "OTHER"
+stormData$evtype[grep("FROST", stormData$evtype, ignore.case = TRUE)] <- "FROST"
+stormData$evtype[grep("VOLCAN", stormData$evtype, ignore.case = TRUE)] <- "VOLCANO"
+stormData$evtype <- as.factor(stormData$evtype)
+```
+
+# Results
+Here we present the main analytical findings.
+## Events Most Harmful with Respect to Population Health
+
+```{r results_health, cache=TRUE, fig.width=14}
+healthIssues = stormData %>% group_by(evtype) %>% summarise( fatalities = sum(fatalities), injuries = sum(injuries), totalHarm = injuries + fatalities)
+healthIssues = arrange(healthIssues, desc(totalHarm))
+top10Healthissues <- head(healthIssues, 10)
+
+#Plot the results
+top10Healthissues$evtype <- factor(top10Healthissues$evtype, as.character(top10Healthissues$evtype))
+options(scipen=5)
+ggplot(top10Healthissues, aes(evtype, totalHarm, fill=evtype)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Most harmful weather events, 1995-2011") +
+  xlab("Event Type") +
+  ylab("Total Harm (injuries and fatalities)")
+```
+## Events with the Greatest Economic Consequences
+
+```{r results_economy, cache=TRUE, fig.width=14}
+econ = select(stormData, -fatalities, -injuries)
+multiplier = c("K" = 1000, "M" = 1000^2, "B" = 1000^3)
+econ$propdmgexp = toupper(econ$propdmgexp)
+econ$cropdmgexp = toupper(econ$cropdmgexp)
+econ = econ %>% mutate(pdmg = propdmg * multiplier[as.character(propdmgexp)]) %>% mutate(cdmg = cropdmg * multiplier[as.character(econ$cropdmgexp)])
+econ[is.na(econ)] = 0
+econ = mutate(econ, totalDmg = pdmg + cropdmg)
+econ = econ %>% group_by(EVTYPE) %>% summarise(totalDmg = sum(totalDmg))
+econ = arrange(econ, desc(totalDmg))
+top10EconIssues <- head(econ, 10)
+
+#Plot the results
+top10EconIssues$evtype <- factor(top10EconIssues$evtype, as.character(top10EconIssues$evtype))
+options(scipen=5)
+ggplot(top10EconIssues, aes(evtype, totalDmg, fill=evtype)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Weather events with greates economic consequences, 1995-2011") +
+  xlab("Event Type") +
+  ylab("Total Damage (property and crops)")
+```
