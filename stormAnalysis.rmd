@@ -1,0 +1,10 @@
+---
+title: 'Most Harmful Types of Severe Weather Events Across the United States'
+author: "pszjmb1"
+date: "Sunday, June 21, 2015"
+output: html_document
+---
+
+# Synopsis
+
+It is paramount to the public health and economy to optimise the use of resources in order to prevent and/or mitigate the effects of severe weather events. In order to help prioritise resource use, this report examines the [US National Weather Service Storm Database](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf) to determine the types of events most harmful to population health and the ones that have the greatest economic consequences. Our data analysis indicates that X events are most harmful to population health and Y events have the greatest economic consequences.
